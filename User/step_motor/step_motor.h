@@ -1,48 +1,37 @@
-#ifndef __STEP_MOTOR_H
-#define __STEP_MOTOR_H
+#ifndef __STEP_MOTOR_H__
+#define __STEP_MOTOR_H__
 
 #include "main.h"
 
-// 步进电机通道标识
+// 电机 ID 枚举
 typedef enum {
-    STEP_MOTOR_A = 0,
-    STEP_MOTOR_B = 1
+    STEP_MOTOR_A = 0,  // TIM8_CH3 控制，TIM2 计步
+    STEP_MOTOR_B = 1   // TIM1_CH2N 控制，TIM3 计步
 } StepMotorId;
 
-/**
- * @brief 初始化步进电机方向与休眠引脚（不启动 PWM）
- */
+// 初始化 GPIO（方向、SLEEP）
 void StepMotor_Init(void);
 
-/**
- * @brief 设置电机方向
- * @param motor 选择 A 或 B
- * @param dir GPIO_PIN_RESET = 顺时针，GPIO_PIN_SET = 逆时针
- */
+// 设置方向：GPIO_PIN_RESET = 顺时针，GPIO_PIN_SET = 逆时针
 void StepMotor_SetDir(StepMotorId motor, GPIO_PinState dir);
 
-/**
- * @brief 设置电机 SLEEP 状态（电平控制）
- * @param state GPIO_PIN_RESET = 使能，GPIO_PIN_SET = 休眠
- */
+// 设置使能（SLEEP引脚控制）：GPIO_PIN_SET = 唤醒，GPIO_PIN_RESET = 休眠
 void StepMotor_SetSleep(StepMotorId motor, GPIO_PinState state);
 
-/**
- * @brief 启动指定电机的 PWM 输出
- */
+// 启动 PWM（开启脉冲输出）
 void StepMotor_Start(StepMotorId motor);
 
-/**
- * @brief 停止指定电机的 PWM 输出
- */
+// 停止 PWM（停止脉冲输出）
 void StepMotor_Stop(StepMotorId motor);
 
-/**
- * @brief 设置电机 PWM 占空比（单位：百分比）
- * @param percent 0~100，对应步进频率
- */
+// 设置 PWM 占空比（百分比 0~100）
 void StepMotor_SetDuty(StepMotorId motor, float percent);
 
-void StepMotor_Turn(StepMotorId motor, float angle, float subdivide, uint8_t dir, float rpm);
+// 控制电机转动固定角度
+void StepMotor_Turn(StepMotorId motor,
+                    float angle,        // 角度（单位：度）
+                    float subdivide,    // 细分数（如 1, 2, 4, 8...）
+                    uint8_t dir,        // 方向：0 = 顺时针，1 = 逆时针
+                    float rpm);         // 转速（单位：RPM）
 
-#endif  // __STEP_MOTOR_H
+#endif // __STEP_MOTOR_H__

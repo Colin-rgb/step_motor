@@ -49,12 +49,31 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+float angle_val = 90.0;               // 默认角度
+GPIO_PinState last_run = GPIO_PIN_SET;
+GPIO_PinState last_angle = GPIO_PIN_SET;
+uint8_t dir_val = 0;              // 方向（0 顺时针，1 逆时针）
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  if (htim == &htim2) {
+    StepMotor_Stop(STEP_MOTOR_A);
+    StepMotor_SetSleep(STEP_MOTOR_A, GPIO_PIN_RESET);
+    usart_printf("A 电机停止\r\n");
+  }
+  if (htim == &htim3) {
+    StepMotor_Stop(STEP_MOTOR_B);
+    StepMotor_SetSleep(STEP_MOTOR_B, GPIO_PIN_RESET);
+    usart_printf("B 电机停止\r\n");
+  }
+}
+
+
 
 /* USER CODE END PFP */
 
@@ -97,6 +116,8 @@ int main(void)
   MX_TIM2_Init();
   MX_TIM8_Init();
   MX_USART1_UART_Init();
+  MX_TIM1_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
   // 初始化按键中断
   // Key_Init();
@@ -104,31 +125,25 @@ int main(void)
   // 初始化方向与休眠引脚
   StepMotor_Init();
   // 使能 A、B 电机（退出 SLEEP）
-  StepMotor_SetSleep(STEP_MOTOR_A, GPIO_PIN_RESET);
-  StepMotor_SetSleep(STEP_MOTOR_B, GPIO_PIN_RESET);
+  StepMotor_SetSleep(STEP_MOTOR_A, GPIO_PIN_SET);
+  StepMotor_SetSleep(STEP_MOTOR_B, GPIO_PIN_SET);
 
   // 设置方向（GPIO_PIN_RESET = 顺时针）
   StepMotor_SetDir(STEP_MOTOR_A, GPIO_PIN_RESET);
   StepMotor_SetDir(STEP_MOTOR_B, GPIO_PIN_RESET);
 
-  // 设置占空比为 50%
-  // StepMotor_SetDuty(STEP_MOTOR_A, 50.0f);  // 百分比
-  // StepMotor_SetDuty(STEP_MOTOR_B, 50.0f);
-  StepMotor_SetDuty(STEP_MOTOR_A, 0.0f);  // 百分比
+  // 5. 设置 PWM 占空比（正式开始转动）
+  StepMotor_SetDuty(STEP_MOTOR_A, 0.0f);
   StepMotor_SetDuty(STEP_MOTOR_B, 0.0f);
 
-  // 启动 PWM 输出
+  // 6. 启动 PWM（TIM8）
   StepMotor_Start(STEP_MOTOR_A);
   StepMotor_Start(STEP_MOTOR_B);
+
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
-  // 初始状态
-  GPIO_PinState last_run = GPIO_PIN_SET;  // PC14上次状态（运行）
-  GPIO_PinState last_angle = GPIO_PIN_SET;  // PC15上次状态（改变角度）
-
-  int angle_val = 90;   // 初始角度
-  uint8_t dir_val = 0; // 固定方向，若不需要可以扩展
   /* USER CODE BEGIN WHILE */
   // 默认状态
   while (1)
@@ -136,24 +151,25 @@ int main(void)
     GPIO_PinState run_now = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_14);   // 启动按键
     GPIO_PinState angle_now = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_15); // 改变角度按键
 
-    // 如果 PC15 从高变低 → 增加角度
+    // PC15 从高变低 → 增加角度
     if (last_angle == GPIO_PIN_SET && angle_now == GPIO_PIN_RESET)
     {
       angle_val += 90;
-      if (angle_val >= 360) angle_val = 90; // 超过360后回到90
+      if (angle_val >= 360) angle_val = 90; // 超过360回到90
       usart_printf("角度增加，当前角度: %d 度\r\n", angle_val);
     }
 
-    // 如果 PC14 从高变低 → 运行一次
+    // PC14 从高变低 → 同时启动 A 和 B 电机旋转
     if (last_run == GPIO_PIN_SET && run_now == GPIO_PIN_RESET)
     {
-      usart_printf("执行电机旋转 %d 度\r\n", angle_val);
-      StepMotor_Turn(STEP_MOTOR_B, angle_val, 32.0f, dir_val, 20.0f);  // 细分32，20转/分
+      usart_printf("执行 A/B 电机旋转 %d 度\r\n", angle_val);
+      StepMotor_Turn(STEP_MOTOR_A, angle_val, 32.0f, dir_val, 13.0f);
+      StepMotor_Turn(STEP_MOTOR_B, angle_val, 32.0f, dir_val, 13.0f);
     }
+
 
     last_run = run_now;
     last_angle = angle_now;
-
     HAL_Delay(10);  // 简单防抖
     /* USER CODE END WHILE */
 
