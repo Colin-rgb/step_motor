@@ -39,7 +39,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 // 定义 UART 接收缓存（大小可根据实际命令长度扩展）
-#define UART_RX_BUF_LEN 64
+#define UART_RX_BUF_LEN 128
 uint8_t uart_rx_ch;           // 每次接收1个字节
 char uart_cmd_buf[UART_RX_BUF_LEN];  // 临时拼接命令
 uint8_t uart_cmd_idx = 0;
@@ -174,7 +174,7 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   // 默认状态
-  angle_val = 5;
+  // angle_val = 5;
   while (1)
   {
     GPIO_PinState run_now = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_14);   // 启动按键
@@ -183,7 +183,7 @@ int main(void)
     // PC15 从高变低 → 增加角度
     if (last_angle == GPIO_PIN_SET && angle_now == GPIO_PIN_RESET)
     {
-      angle_val += 5;
+      angle_val += 90;
       if (angle_val >= 360) angle_val = 90; // 超过360回到90
       usart_printf("角度增加，当前角度: %d 度\r\n", angle_val);
     }
@@ -192,8 +192,8 @@ int main(void)
     if (last_run == GPIO_PIN_SET && run_now == GPIO_PIN_RESET)
     {
       usart_printf("执行 A/B 电机旋转 %d 度\r\n", angle_val);
-      StepMotor_Turn(STEP_MOTOR_A, angle_val, 32.0f, dir_val, 20.0f);
-      StepMotor_Turn(STEP_MOTOR_B, angle_val, 32.0f, dir_val, 20.0f);
+      StepMotor_Turn(STEP_MOTOR_A, angle_val, 32.0f, dir_val, 100.0f);
+      StepMotor_Turn(STEP_MOTOR_B, angle_val, 32.0f, dir_val, 100.0f);
     }
 
 
@@ -211,7 +211,7 @@ int main(void)
       }
       else if (strncmp(uart_cmd_buf, "TURN", 4) == 0) {
         float angle = atof(&uart_cmd_buf[5]);
-        StepMotor_Turn(STEP_MOTOR_A, angle, 32.0f, 1, 20.0f);
+        StepMotor_Turn(STEP_MOTOR_A, angle, 32.0f, 1, 30.0f);
       }
     }
 

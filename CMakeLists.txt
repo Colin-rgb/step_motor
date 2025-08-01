@@ -49,6 +49,10 @@ add_executable(${CMAKE_PROJECT_NAME}
         User/Key/key.h
 )
 
+# Enable float support in printf by linking with _printf_float
+target_link_options(${CMAKE_PROJECT_NAME} PRIVATE -u _printf_float)
+
+
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
 

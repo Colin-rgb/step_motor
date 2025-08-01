@@ -28,6 +28,7 @@ typedef struct {
     int curr_arr;
     int rest;
     int total_steps;
+    float subdivide;  // 每转细分数，例如 32
 } StepMotorRamp_t;
 
 // 🔥 新增这两行（声明外部变量）
