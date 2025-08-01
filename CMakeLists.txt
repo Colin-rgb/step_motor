@@ -36,6 +36,7 @@ include_directories(
         ${PROJECT_SOURCE_DIR}/User/step_motor
         ${PROJECT_SOURCE_DIR}/User/usart_redirect
         ${PROJECT_SOURCE_DIR}/User/Key
+        ${PROJECT_SOURCE_DIR}/User/pid
 )
 
 # Create an executable object type
@@ -47,6 +48,8 @@ add_executable(${CMAKE_PROJECT_NAME}
         Core/Src/delay.c
         User/Key/key.c
         User/Key/key.h
+        User/pid/pid.c
+        User/pid/pid.h
 )
 
 # Enable float support in printf by linking with _printf_float
