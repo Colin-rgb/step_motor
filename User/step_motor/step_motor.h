@@ -1,65 +1,48 @@
-#ifndef __STEP_MOTOR_H__
-#define __STEP_MOTOR_H__
+#ifndef __STEP_MOTOR_H
+#define __STEP_MOTOR_H
 
 #include "main.h"
 
-// 电机 ID 枚举
+// 步进电机通道标识
 typedef enum {
-    STEP_MOTOR_A = 0,  // TIM8_CH3 控制，TIM2 计步
-    STEP_MOTOR_B = 1   // TIM1_CH2N 控制，TIM3 计步
+    STEP_MOTOR_A = 0,
+    STEP_MOTOR_B = 1
 } StepMotorId;
 
-typedef enum {
-    STOP = 0,
-    ACCEL,
-    RUN,
-    DECEL
-} StepMotorRunState;
-
-// 全局状态
-typedef struct {
-    StepMotorId motor;
-    uint8_t run_state;
-    int accel_count;
-    int step_count;
-    int decel_start;
-    int decel_val;
-    int min_arr;
-    int curr_arr;
-    int rest;
-    int total_steps;
-    float subdivide;  // 每转细分数，例如 32
-} StepMotorRamp_t;
-
-// 🔥 新增这两行（声明外部变量）
-extern StepMotorRamp_t motor_ramp_A;
-extern StepMotorRamp_t motor_ramp_B;
-
-// 初始化 GPIO（方向、SLEEP）
+/**
+ * @brief 初始化步进电机方向与休眠引脚（不启动 PWM）
+ */
 void StepMotor_Init(void);
 
-// 设置方向：GPIO_PIN_RESET = 顺时针，GPIO_PIN_SET = 逆时针
+/**
+ * @brief 设置电机方向
+ * @param motor 选择 A 或 B
+ * @param dir GPIO_PIN_RESET = 顺时针，GPIO_PIN_SET = 逆时针
+ */
 void StepMotor_SetDir(StepMotorId motor, GPIO_PinState dir);
 
-// 设置使能（SLEEP引脚控制）：GPIO_PIN_SET = 唤醒，GPIO_PIN_RESET = 休眠
+/**
+ * @brief 设置电机 SLEEP 状态（电平控制）
+ * @param state GPIO_PIN_RESET = 使能，GPIO_PIN_SET = 休眠
+ */
 void StepMotor_SetSleep(StepMotorId motor, GPIO_PinState state);
 
-// 启动 PWM（开启脉冲输出）
+/**
+ * @brief 启动指定电机的 PWM 输出
+ */
 void StepMotor_Start(StepMotorId motor);
 
-// 停止 PWM（停止脉冲输出）
+/**
+ * @brief 停止指定电机的 PWM 输出
+ */
 void StepMotor_Stop(StepMotorId motor);
 
-// 设置 PWM 占空比（百分比 0~100）
+/**
+ * @brief 设置电机 PWM 占空比（单位：百分比）
+ * @param percent 0~100，对应步进频率
+ */
 void StepMotor_SetDuty(StepMotorId motor, float percent);
 
-// 控制电机转动固定角度
-void StepMotor_Turn(StepMotorId motor,
-                    float angle,        // 角度（单位：度）
-                    float subdivide,    // 细分数（如 1, 2, 4, 8...）
-                    uint8_t dir,        // 方向：0 = 顺时针，1 = 逆时针
-                    float rpm);         // 转速（单位：RPM）
+void StepMotor_Turn(StepMotorId motor, float angle, float subdivide, uint8_t dir, float rpm);
 
-void StepMotor_ForceStop(StepMotorId motor);
-
-#endif // __STEP_MOTOR_H__
+#endif  // __STEP_MOTOR_H

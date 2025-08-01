@@ -56,22 +56,22 @@ void parse_uart_cmd(const char* cmd)
 
   // 添加长度检查
   if (strlen(cmd) < 7) {
-    usart_printf("命令过短: %s\r\n", cmd);
+    // usart_printf("命令过短: %s\r\n", cmd);
     return;
   }
 
   if (strncmp(cmd, "0xdect:", 7) != 0) {
-    usart_printf("无效命令头: %s\r\n", cmd);
+    // usart_printf("无效命令头: %s\r\n", cmd);
     return;
   }
   if (sscanf(cmd, "0xdect:%d,err:%d,%d", &dect_flag, &x_err, &y_err) == 3)
   {
-    usart_printf("✅ 解析成功: dect=%d, x=%.2f, y=%.2f\r\n", dect_flag, x_err, y_err);
+    // usart_printf("✅ 解析成功: dect=%d, x=%.2f, y=%.2f\r\n", dect_flag, x_err, y_err);
     StepMotor_PID_Update(x_err, y_err, dect_flag);
   }
   else
   {
-    usart_printf("❌ 解析失败: %s\r\n", cmd);
+    // usart_printf("❌ 解析失败: %s\r\n", cmd);
   }
 }
 // 清空接收缓冲区
@@ -88,7 +88,7 @@ void loop_uart_check(void)
 
   // 超时检查：如果长时间没有完整命令，清空缓冲区
   if (uart_cmd_idx > 0 && (current_time - last_receive_time) > CMD_TIMEOUT_MS) {
-    usart_printf("⚠️ 命令接收超时，清空缓冲区\r\n");
+    // usart_printf("⚠️ 命令接收超时，清空缓冲区\r\n");
     clear_uart_buffer();
   }
 
@@ -120,7 +120,7 @@ void loop_uart_check(void)
     {
       if (uart_cmd_idx > 0) {  // 确保有数据
         uart_cmd_buf[uart_cmd_idx] = '\0';
-        usart_printf("📨 收到命令: %s\r\n", uart_cmd_buf);
+        // usart_printf("📨 收到命令: %s\r\n", uart_cmd_buf);
         parse_uart_cmd(uart_cmd_buf);
         clear_uart_buffer();
       }
@@ -131,7 +131,7 @@ void loop_uart_check(void)
       if (uart_cmd_idx < UART_RX_BUF_LEN - 1) {
         uart_cmd_buf[uart_cmd_idx++] = ch;
       } else {
-        usart_printf("⚠️ 缓冲区溢出，清空重新开始\r\n");
+        // usart_printf("⚠️ 缓冲区溢出，清空重新开始\r\n");
         clear_uart_buffer();
       }
     }
@@ -141,7 +141,8 @@ void loop_uart_check(void)
 void MotorControl_Init(void)
 {
   // 初始化 PID 参数（可自行调参）
-  PID_Init(&pid_x, 0.001f, 0.01f, 0.001f, 50.0f);
+  // PID_Init(&pid_x, 0.001f, 0.01f, 0.001f, 50.0f);
+  PID_Init(&pid_x, 10.0f, 0.001f, 0.001f, 50.0f);
   PID_Init(&pid_y, 10.0f, 0.001f, 0.001f, 50.0f);
   // PID_Init(&pid_y, 1.0f, 0.01f, 0.001f, 50.0f);
 }
@@ -222,6 +223,9 @@ int main(void)
   // 初始化方向与休眠引脚
   StepMotor_Init();
   // 使能 A、B 电机
+  // 初始化方向与休眠引脚
+  StepMotor_Init();
+  // 使能 A、B 电机（退出 SLEEP）
   StepMotor_SetSleep(STEP_MOTOR_A, GPIO_PIN_SET);
   StepMotor_SetSleep(STEP_MOTOR_B, GPIO_PIN_SET);
 
@@ -229,17 +233,19 @@ int main(void)
   StepMotor_SetDir(STEP_MOTOR_A, GPIO_PIN_RESET);
   StepMotor_SetDir(STEP_MOTOR_B, GPIO_PIN_RESET);
 
-  // 5. 设置 PWM 占空比（正式开始转动）
-  StepMotor_SetDuty(STEP_MOTOR_A, 0.0f);
+  // 设置占空比为 50%
+  // StepMotor_SetDuty(STEP_MOTOR_A, 50.0f);  // 百分比
+  // StepMotor_SetDuty(STEP_MOTOR_B, 50.0f);
+  StepMotor_SetDuty(STEP_MOTOR_A, 0.0f);  // 百分比
   StepMotor_SetDuty(STEP_MOTOR_B, 0.0f);
 
-  // 6. 启动 PWM（TIM8）
+  // 启动 PWM 输出
   StepMotor_Start(STEP_MOTOR_A);
   StepMotor_Start(STEP_MOTOR_B);
 
   delay_ms(10);
 
-  StepMotor_Turn(STEP_MOTOR_A, 80, 32.0f, 0, 50);
+  StepMotor_Turn(STEP_MOTOR_A, 80, 32.0f, 0, 100);
   // delay_ms(500);
   // StepMotor_Turn(STEP_MOTOR_A, 0, 32.0f, 0, 50);
 

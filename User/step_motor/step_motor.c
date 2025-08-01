@@ -1,172 +1,108 @@
 #include "step_motor.h"
 #include "tim.h"
 #include "gpio.h"
-#include "usart_user.h"
 
-// 内部函数：获取对应 PWM 通道
+// 内部函数：获取对应通道，A电机为TIM_CHN_3，B电机为TIM_CHN_4
+// ********** 云台下面是B电机，上面是A电机 ************ //
 static uint32_t StepMotor_GetChannel(StepMotorId motor)
 {
     return (motor == STEP_MOTOR_A) ? TIM_CHANNEL_3 : TIM_CHANNEL_4;
 }
 
-// 获取 PWM 用的 TIM 句柄
-static TIM_HandleTypeDef* StepMotor_GetPWMHandle(StepMotorId motor)
-{
-    return (motor == STEP_MOTOR_A) ? &htim8 : &htim1;
-}
-
-// 获取 角度计数用的 TIM 句柄
-static TIM_HandleTypeDef* StepMotor_GetCounterHandle(StepMotorId motor)
-{
-    return (motor == STEP_MOTOR_A) ? &htim2 : &htim3;
-}
-
-void StepMotor_ForceStop(StepMotorId motor)
-{
-    StepMotorRamp_t* ramp = (motor == STEP_MOTOR_A) ? &motor_ramp_A : &motor_ramp_B;
-
-    // 停止 PWM 输出
-    StepMotor_Stop(motor);
-    StepMotor_SetDuty(motor, 0);  // 不释放使能，让电机保持锁定但无声
-
-    // 停止计步定时器
-    TIM_HandleTypeDef* cnt_htim = StepMotor_GetCounterHandle(motor);
-    HAL_TIM_Base_Stop_IT(cnt_htim);
-
-    // 清状态
-    ramp->run_state = STOP;
-    ramp->step_count = 0;
-    ramp->accel_count = 0;
-    ramp->curr_arr = 0;
-}
-
-
-// 初始化方向与使能引脚
+// 初始化 GPIO：方向和 SLEEP 引脚
 void StepMotor_Init(void)
 {
-    HAL_GPIO_WritePin(A_DIR_GPIO_Port, A_DIR_Pin, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(B_DIR_GPIO_Port, B_DIR_Pin, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(A_SLEEP_GPIO_Port, A_SLEEP_Pin, GPIO_PIN_SET); // 默认休眠
-    HAL_GPIO_WritePin(B_SLEEP_GPIO_Port, B_SLEEP_Pin, GPIO_PIN_SET);
+    // DIR 设为默认方向（低）
+    HAL_GPIO_WritePin(A_DIR_GPIO_Port, A_DIR_Pin, GPIO_PIN_RESET); // A_DIR
+    HAL_GPIO_WritePin(B_DIR_GPIO_Port, B_DIR_Pin,  GPIO_PIN_RESET); // B_DIR
+
+    // SLEEP 设为高电平 → 休眠状态
+    HAL_GPIO_WritePin(A_SLEEP_GPIO_Port, A_SLEEP_Pin, GPIO_PIN_SET);   // A_SLEEP
+    HAL_GPIO_WritePin(B_SLEEP_GPIO_Port, B_SLEEP_Pin, GPIO_PIN_SET);   // B_SLEEP
 }
 
-// 设置方向：0=顺时针，1=逆时针
+// 设置方向：0为顺时针，1为逆时针
 void StepMotor_SetDir(StepMotorId motor, GPIO_PinState dir)
 {
     if (motor == STEP_MOTOR_A)
-        HAL_GPIO_WritePin(A_DIR_GPIO_Port, A_DIR_Pin, dir);
+        HAL_GPIO_WritePin(A_DIR_GPIO_Port, A_DIR_Pin, dir); // A_DIR
     else
-        HAL_GPIO_WritePin(B_DIR_GPIO_Port, B_DIR_Pin, dir);
+        HAL_GPIO_WritePin(B_DIR_GPIO_Port, B_DIR_Pin, dir);  // B_DIR
 }
 
-// 设置休眠（EN）
+// 设置使能（EN）状态：SET=使能，RESET=休眠
 void StepMotor_SetSleep(StepMotorId motor, GPIO_PinState state)
 {
     if (motor == STEP_MOTOR_A)
-        HAL_GPIO_WritePin(A_SLEEP_GPIO_Port, A_SLEEP_Pin, state);
+        HAL_GPIO_WritePin(A_SLEEP_GPIO_Port, A_SLEEP_Pin, state); // A_SLEEP
     else
-        HAL_GPIO_WritePin(B_SLEEP_GPIO_Port, B_SLEEP_Pin, state);
+        HAL_GPIO_WritePin(B_SLEEP_GPIO_Port, B_SLEEP_Pin, state); // B_SLEEP
 }
 
-// 设置占空比
-void StepMotor_SetDuty(StepMotorId motor, float percent)
-{
-    TIM_HandleTypeDef* pwm_htim = StepMotor_GetPWMHandle(motor);
-    uint32_t channel = StepMotor_GetChannel(motor);
-    uint32_t arr = __HAL_TIM_GET_AUTORELOAD(pwm_htim);
-    uint16_t pulse = (uint16_t)(percent / 100.0f * arr);
-    __HAL_TIM_SET_COMPARE(pwm_htim, channel, pulse);
-}
 
-// 启动 PWM
-// void StepMotor_Start(StepMotorId motor)
-// {
-//     HAL_TIM_PWM_Start(StepMotor_GetPWMHandle(motor), StepMotor_GetChannel(motor));
-// }
-
+// 启动 PWM 输出
 void StepMotor_Start(StepMotorId motor)
 {
-    HAL_TIM_PWM_Start_IT(StepMotor_GetPWMHandle(motor), StepMotor_GetChannel(motor));
+    HAL_TIM_PWM_Start(&htim8, StepMotor_GetChannel(motor));
 }
 
-
-// 停止 PWM
+// 停止 PWM 输出
 void StepMotor_Stop(StepMotorId motor)
 {
-    HAL_TIM_PWM_Stop(StepMotor_GetPWMHandle(motor), StepMotor_GetChannel(motor));
+    HAL_TIM_PWM_Stop(&htim8, StepMotor_GetChannel(motor));
 }
 
-StepMotorRamp_t motor_ramp_A;
-StepMotorRamp_t motor_ramp_B;
+// 设置占空比（百分比）
+void StepMotor_SetDuty(StepMotorId motor, float percent)
+{
+    uint32_t arr = __HAL_TIM_GET_AUTORELOAD(&htim8);
+    uint16_t pulse = (uint16_t)(percent / 100.0f * arr);
+    __HAL_TIM_SET_COMPARE(&htim8, StepMotor_GetChannel(motor), pulse);
+}
 
-// =================================================================================
-//  直接替换这个函数
-// =================================================================================
+/**
+ * @brief 使用 PWM 控制步进电机旋转指定角度
+ * @param motor         STEP_MOTOR_A / STEP_MOTOR_B
+ * @param angle         需要旋转的角度
+ * @param subdivide     细分值（如 1, 2, 4, 8...）
+ * @param dir           方向：0=顺时针，1=逆时针
+ * @param rpm           目标转速（RPM）
+ */
 void StepMotor_Turn(StepMotorId motor, float angle, float subdivide, uint8_t dir, float rpm)
 {
-    // 参数检查 (rpm_max 现在是 target rpm)
-    if (angle <= 0.0f || subdivide <= 0.0f || rpm <= 0.0f) return;
+    // 1. 设置方向
+    StepMotor_SetDir(motor, dir == 0 ? GPIO_PIN_RESET : GPIO_PIN_SET);
 
-    // --- 核心修改部分 ---
-
-    // 1. 仍然需要计算总步数以保证角度精确
-    float step_angle = 1.8f / subdivide;
-    uint32_t total_steps = (uint32_t)(angle / step_angle + 0.5f);
-    if (total_steps == 0) return;
-
-    // 2. 根据目标RPM，只计算一个恒定的ARR值
-    float steps_per_rev = 200.0f * subdivide;
-    float target_freq = (rpm * steps_per_rev) / 60.0f;
-    uint32_t constant_arr = (uint32_t)(72000000.0f / target_freq); // 假设72MHz时钟
-
-    // 检查ARR值是否在有效范围内
-    if (constant_arr > 0xFFFF) constant_arr = 0xFFFF; // 防止转速过低导致溢出
-    if (constant_arr < 10) constant_arr = 10;           // 限制一个最高频率，防止硬件跟不上
-
-    // --- 移除了所有加减速相关的计算和状态设置 ---
-    // StepMotorRamp_t 结构体现在只用于标记状态
-    StepMotorRamp_t* ramp = (motor == STEP_MOTOR_A) ? &motor_ramp_A : &motor_ramp_B;
-    ramp->run_state = RUN; // 直接设置为运行状态
-    ramp->total_steps = total_steps; // 仍然保存总步数，方便调试
-
-    // 3. 硬件设置
-    StepMotor_SetDir(motor, dir ? GPIO_PIN_SET : GPIO_PIN_RESET);
+    // 2. 设置 EN 高电平（使能）
     StepMotor_SetSleep(motor, GPIO_PIN_SET);
 
-    // 4. 设置PWM定时器 (TIM8 / TIM1)
-    TIM_HandleTypeDef* pwm_htim = StepMotor_GetPWMHandle(motor);
-    __HAL_TIM_SET_PRESCALER(pwm_htim, 0);
-    __HAL_TIM_SET_AUTORELOAD(pwm_htim, constant_arr); // 使用计算出的恒定ARR值
-    StepMotor_SetDuty(motor, 50.0f);
+    // 3. 计算总步数（以1.8度为基础）
+    float step_angle = 1.8f / subdivide;  // 每个子步对应的角度
+    uint32_t total_steps = (uint32_t)(angle / step_angle);
 
-    // 5. 设置计步定时器 (TIM2 / TIM3)
-    TIM_HandleTypeDef* cnt_htim = StepMotor_GetCounterHandle(motor);
-    __HAL_TIM_SET_COUNTER(cnt_htim, 0);
-    // 设置计步器在 'total_steps' 个脉冲后产生中断
-    // 因为计数从0到ARR，总共是ARR+1次，所以要设置为 total_steps - 1
-    __HAL_TIM_SET_AUTORELOAD(cnt_htim, total_steps - 1);
-    __HAL_TIM_CLEAR_FLAG(cnt_htim, TIM_FLAG_UPDATE);
+    // 4. 计算频率（Hz） = RPM × 步数/圈 ÷ 60
+    float steps_per_rev = 200 * subdivide;  // 每圈脉冲数
+    float freq = (rpm * steps_per_rev) / 60.0f;
 
-    // 6. 启动电机和计步器
-    StepMotor_Start(motor);             // 启动PWM脉冲输出
-    HAL_TIM_Base_Start_IT(cnt_htim);    // 启动计步器中断，它只会在结束时触发一次
-}
+    // 5. 设置 PWM 频率（用ARR和PSC控制）
+    // 假设使用 TIM8，APB2时钟=72MHz，预分频后 TIM 时钟为 72MHz
+    // 目标 freq → ARR = 72MHz / freq
+    uint32_t timer_clk = 72000000;
+    uint32_t arr = (uint32_t)(timer_clk / freq);
+    if (arr > 0xFFFF) arr = 0xFFFF;  // 限制最大值
+    __HAL_TIM_SET_AUTORELOAD(&htim8, arr);
+    __HAL_TIM_SET_PRESCALER(&htim8, 0);  // 你也可以按需设置PSC
 
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-    // 检查是否是A电机的计步器 TIM2
-    if (htim->Instance == TIM2) {
-        StepMotor_Stop(STEP_MOTOR_A);
-        motor_ramp_A.run_state = STOP; // 更新状态
-        // 可选: 打印信息
-        usart_printf("A 电机完成, 已停止\r\n");
-    }
-    // 检查是否是B电机的计步器 TIM3
-    if (htim->Instance == TIM3) {
-        StepMotor_Stop(STEP_MOTOR_B);
-        motor_ramp_B.run_state = STOP; // 更新状态
-        // 可选: 打印信息
-        usart_printf("B 电机完成, 已停止\r\n");
-    }
+    StepMotor_SetDuty(motor, 50.0f);  // 设置占空比50%
+    StepMotor_Start(motor);          // 启动PWM
+
+    // 6. 延时以输出 total_steps 个脉冲
+    // 一个脉冲周期 = 1/freq 秒，n个脉冲时间 = total_steps / freq 秒
+    float duration_ms = (float)total_steps / freq * 1000.0f;
+    HAL_Delay((uint32_t)duration_ms);
+
+    // 7. 停止
+    StepMotor_Stop(motor);
+    // StepMotor_SetSleep(motor, GPIO_PIN_RESET);  // 关闭 EN
 }
 
