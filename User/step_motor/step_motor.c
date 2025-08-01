@@ -99,110 +99,74 @@ void StepMotor_Stop(StepMotorId motor)
 StepMotorRamp_t motor_ramp_A;
 StepMotorRamp_t motor_ramp_B;
 
-void StepMotor_Turn(StepMotorId motor, float angle, float subdivide, uint8_t dir, float rpm_max)
+// =================================================================================
+//  直接替换这个函数
+// =================================================================================
+void StepMotor_Turn(StepMotorId motor, float angle, float subdivide, uint8_t dir, float rpm)
 {
-    if (angle <= 0.0f || subdivide <= 0.0f || rpm_max <= 0.0f) return;
+    // 参数检查 (rpm_max 现在是 target rpm)
+    if (angle <= 0.0f || subdivide <= 0.0f || rpm <= 0.0f) return;
 
-    StepMotorRamp_t* ramp = (motor == STEP_MOTOR_A) ? &motor_ramp_A : &motor_ramp_B;
-    memset(ramp, 0, sizeof(StepMotorRamp_t));
-    ramp->motor = motor;
+    // --- 核心修改部分 ---
 
+    // 1. 仍然需要计算总步数以保证角度精确
     float step_angle = 1.8f / subdivide;
-    ramp->total_steps = (uint32_t)(angle / step_angle + 0.5f);
-    if (ramp->total_steps == 0) return;
+    uint32_t total_steps = (uint32_t)(angle / step_angle + 0.5f);
+    if (total_steps == 0) return;
 
+    // 2. 根据目标RPM，只计算一个恒定的ARR值
     float steps_per_rev = 200.0f * subdivide;
-    float freq_max = (rpm_max * steps_per_rev) / 60.0f;
-    ramp->min_arr = (uint32_t)(72000000.0f / freq_max);
-    if (ramp->min_arr > 0xFFFF) ramp->min_arr = 0xFFFF;
+    float target_freq = (rpm * steps_per_rev) / 60.0f;
+    uint32_t constant_arr = (uint32_t)(72000000.0f / target_freq); // 假设72MHz时钟
 
-    ramp->curr_arr = (uint32_t)(72000000.0f / (freq_max / 10.0f));
-    if (ramp->curr_arr > 0xFFFF) ramp->curr_arr = 0xFFFF;
+    // 检查ARR值是否在有效范围内
+    if (constant_arr > 0xFFFF) constant_arr = 0xFFFF; // 防止转速过低导致溢出
+    if (constant_arr < 10) constant_arr = 10;           // 限制一个最高频率，防止硬件跟不上
 
-    // ✅ 正确计算 decel 步数
-    ramp->decel_start = ramp->total_steps * 6 / 10;
-    ramp->decel_val = ramp->total_steps - ramp->decel_start;
+    // --- 移除了所有加减速相关的计算和状态设置 ---
+    // StepMotorRamp_t 结构体现在只用于标记状态
+    StepMotorRamp_t* ramp = (motor == STEP_MOTOR_A) ? &motor_ramp_A : &motor_ramp_B;
+    ramp->run_state = RUN; // 直接设置为运行状态
+    ramp->total_steps = total_steps; // 仍然保存总步数，方便调试
 
-    ramp->run_state = ACCEL;
-    ramp->accel_count = 0;
-    ramp->subdivide = subdivide;
-
+    // 3. 硬件设置
     StepMotor_SetDir(motor, dir ? GPIO_PIN_SET : GPIO_PIN_RESET);
     StepMotor_SetSleep(motor, GPIO_PIN_SET);
 
+    // 4. 设置PWM定时器 (TIM8 / TIM1)
     TIM_HandleTypeDef* pwm_htim = StepMotor_GetPWMHandle(motor);
     __HAL_TIM_SET_PRESCALER(pwm_htim, 0);
-    __HAL_TIM_SET_AUTORELOAD(pwm_htim, ramp->curr_arr);
+    __HAL_TIM_SET_AUTORELOAD(pwm_htim, constant_arr); // 使用计算出的恒定ARR值
     StepMotor_SetDuty(motor, 50.0f);
-    StepMotor_Start(motor);
 
+    // 5. 设置计步定时器 (TIM2 / TIM3)
     TIM_HandleTypeDef* cnt_htim = StepMotor_GetCounterHandle(motor);
     __HAL_TIM_SET_COUNTER(cnt_htim, 0);
-    // __HAL_TIM_SET_AUTORELOAD(cnt_htim, ramp->total_steps - 1);
-    __HAL_TIM_SET_AUTORELOAD(cnt_htim, ramp->total_steps);
+    // 设置计步器在 'total_steps' 个脉冲后产生中断
+    // 因为计数从0到ARR，总共是ARR+1次，所以要设置为 total_steps - 1
+    __HAL_TIM_SET_AUTORELOAD(cnt_htim, total_steps - 1);
     __HAL_TIM_CLEAR_FLAG(cnt_htim, TIM_FLAG_UPDATE);
-    HAL_TIM_Base_Start_IT(cnt_htim);
+
+    // 6. 启动电机和计步器
+    StepMotor_Start(motor);             // 启动PWM脉冲输出
+    HAL_TIM_Base_Start_IT(cnt_htim);    // 启动计步器中断，它只会在结束时触发一次
 }
 
-void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim)
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-    StepMotorId motor;
-    StepMotorRamp_t* ramp;
-
-    // 匹配 PWM 通道对应的电机
-    if (htim == &htim8) {
-        motor = STEP_MOTOR_A;
-        ramp = &motor_ramp_A;
-    } else if (htim == &htim1) {
-        motor = STEP_MOTOR_B;
-        ramp = &motor_ramp_B;
-    } else {
-        return; // 非法中断源
+    // 检查是否是A电机的计步器 TIM2
+    if (htim->Instance == TIM2) {
+        StepMotor_Stop(STEP_MOTOR_A);
+        motor_ramp_A.run_state = STOP; // 更新状态
+        // 可选: 打印信息
+        usart_printf("A 电机完成, 已停止\r\n");
     }
-
-    // 如果已经停止，不再处理
-    if (ramp->run_state == STOP) return;
-
-    // 步数计数
-    ramp->step_count++;
-
-    // ✅ 达到总步数，停止电机
-    if (ramp->step_count >= ramp->total_steps) {
-        StepMotor_Stop(motor);
-        ramp->run_state = STOP;
-
-        float actual_angle = ramp->step_count * (1.8f / ramp->subdivide);
-        usart_printf("%c 电机完成（减速），角度: %.2f°\r\n",
-                     (motor == STEP_MOTOR_A) ? 'A' : 'B',
-                     actual_angle);
-        return;
+    // 检查是否是B电机的计步器 TIM3
+    if (htim->Instance == TIM3) {
+        StepMotor_Stop(STEP_MOTOR_B);
+        motor_ramp_B.run_state = STOP; // 更新状态
+        // 可选: 打印信息
+        usart_printf("B 电机完成, 已停止\r\n");
     }
-
-    // 状态机更新
-    switch (ramp->run_state) {
-        case ACCEL:
-            ramp->accel_count++;
-            if (ramp->accel_count >= ramp->decel_start) {
-                ramp->run_state = DECEL;
-            } else {
-                if (ramp->curr_arr > ramp->min_arr) {
-                    ramp->curr_arr--;  // 加速阶段逐步提高频率
-                }
-            }
-            break;
-
-        case DECEL:
-            ramp->accel_count++;
-            ramp->curr_arr++;  // 减速阶段逐步减低频率
-            break;
-
-        case STOP:
-        default:
-            return;
-    }
-
-    // ✅ 实时更新 ARR（自动重装载周期）来调整 PWM 频率
-    TIM_HandleTypeDef* pwm_htim = StepMotor_GetPWMHandle(motor);
-    __HAL_TIM_SET_AUTORELOAD(pwm_htim, ramp->curr_arr);
 }
 

@@ -61,19 +61,7 @@ volatile uint8_t uart_cmd_ready = 0;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-  if (htim == &htim2) {
-    StepMotor_Stop(STEP_MOTOR_A);
-    motor_ramp_A.run_state = STOP;
-    usart_printf("A 电机停止\r\n");
-  }
-  if (htim == &htim3) {
-    StepMotor_Stop(STEP_MOTOR_B);
-    motor_ramp_B.run_state = STOP;
-    usart_printf("B 电机停止\r\n");
-  }
-}
+
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
