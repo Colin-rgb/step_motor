@@ -136,7 +136,7 @@ int main(void)
 
   // 初始化方向与休眠引脚
   StepMotor_Init();
-  // 使能 A、B 电机（退出 SLEEP）
+  // 使能 A、B 电机
   StepMotor_SetSleep(STEP_MOTOR_A, GPIO_PIN_SET);
   StepMotor_SetSleep(STEP_MOTOR_B, GPIO_PIN_SET);
 
@@ -151,6 +151,10 @@ int main(void)
   // 6. 启动 PWM（TIM8）
   StepMotor_Start(STEP_MOTOR_A);
   StepMotor_Start(STEP_MOTOR_B);
+
+  delay_ms(10);
+
+  StepMotor_Turn(STEP_MOTOR_A, 80, 32.0f, 0, 50);
 
 
   /* USER CODE END 2 */
