@@ -46,6 +46,10 @@ uint8_t uart_cmd_buf[UART_RX_BUF_LEN] = {0};
 uint16_t uart_cmd_idx = 0;
 uint32_t last_receive_time = 0;
 
+volatile int g_dect_flag = 0;  // 是否检测到目标
+volatile int g_err_x = 0;      // 当前x偏差
+volatile int g_err_y = 0;      // 当前y偏差
+
 #define CMD_TIMEOUT_MS 1000  // 命令超时时间
 
 // 命令解析函数
@@ -68,6 +72,9 @@ void parse_uart_cmd(const char* cmd)
   {
     // usart_printf("✅ 解析成功: dect=%d, x=%.2f, y=%.2f\r\n", dect_flag, x_err, y_err);
     StepMotor_PID_Update(x_err, y_err, dect_flag);
+    g_dect_flag = dect_flag;
+    g_err_x = x_err;
+    g_err_y = y_err;
   }
   else
   {
@@ -147,6 +154,17 @@ void MotorControl_Init(void)
   // PID_Init(&pid_y, 1.0f, 0.01f, 0.001f, 50.0f);
 }
 
+void Laser_On(void)
+{
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_SET);
+}
+
+// 关闭激光器
+void Laser_Off(void)
+{
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_RESET);
+}
+
 
 
 /* USER CODE END PD */
@@ -207,11 +225,8 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_USART2_UART_Init();
-  MX_TIM2_Init();
   MX_TIM8_Init();
   MX_USART1_UART_Init();
-  MX_TIM1_Init();
-  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
   // 初始化按键中断
   // Key_Init();
@@ -246,6 +261,7 @@ int main(void)
   delay_ms(10);
 
   StepMotor_Turn(STEP_MOTOR_A, 80, 32.0f, 0, 100);
+  Laser_Off();  // 默认关闭激光器
   // delay_ms(500);
   // StepMotor_Turn(STEP_MOTOR_A, 0, 32.0f, 0, 50);
 
@@ -254,11 +270,20 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   // 默认状态
+  u8 open_time = 1;
   while (1)
   {
     // StepMotor_Turn(STEP_MOTOR_B, 1.8, 32.0f, 0, 1);
     // usart_printf("hello");
     loop_uart_check();  // 检查是否有数据
+    if (g_dect_flag && abs(g_err_x) <= 5 && abs(g_err_y) <= 5) {
+      if (open_time) {
+        Laser_On();
+        delay_ms(300);
+        Laser_Off();
+        open_time--;
+      }
+    }
     // HAL_Delay(100);  // 简单防抖
     /* USER CODE END WHILE */
 

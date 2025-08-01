@@ -71,6 +71,8 @@ void Error_Handler(void);
 #define KEY_motor_Pin GPIO_PIN_13
 #define KEY_motor_GPIO_Port GPIOC
 #define KEY_motor_EXTI_IRQn EXTI15_10_IRQn
+#define LASER_CTRL_Pin GPIO_PIN_13
+#define LASER_CTRL_GPIO_Port GPIOB
 #define LED_Pin GPIO_PIN_8
 #define LED_GPIO_Port GPIOA
 #define A_DIR_Pin GPIO_PIN_10

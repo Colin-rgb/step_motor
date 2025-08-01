@@ -8,7 +8,7 @@
 
 PID_t pid_x, pid_y;
 
-float last_err_x = 0.0f, last_err_y = 0.0f;
+int last_err_x = 0, last_err_y = 0;
 uint32_t last_valid_time = 0;  // 单位：ms（由 HAL_GetTick() 提供）
 
 // 初始化 PID
@@ -34,7 +34,7 @@ float PID_Compute(PID_t* pid, float error)
     return pid->kp * error + pid->ki * pid->integral + pid->kd * derivative;
 }
 
-void StepMotor_PID_Update(float err_x, float err_y, int valid)
+void StepMotor_PID_Update(int err_x, int err_y, int valid)
 {
     uint32_t now = HAL_GetTick();
 

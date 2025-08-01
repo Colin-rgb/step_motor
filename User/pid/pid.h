@@ -17,6 +17,6 @@ extern PID_t pid_y;
 
 void PID_Init(PID_t* pid, float kp, float ki, float kd, float imax);
 float PID_Compute(PID_t* pid, float error);
-void StepMotor_PID_Update(float err_x, float err_y, int dect_flag);
+void StepMotor_PID_Update(int err_x, int err_y, int dect_flag);
 
 #endif
