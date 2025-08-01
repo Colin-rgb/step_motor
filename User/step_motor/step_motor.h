@@ -9,6 +9,31 @@ typedef enum {
     STEP_MOTOR_B = 1   // TIM1_CH2N 控制，TIM3 计步
 } StepMotorId;
 
+typedef enum {
+    STOP = 0,
+    ACCEL,
+    RUN,
+    DECEL
+} StepMotorRunState;
+
+// 全局状态
+typedef struct {
+    StepMotorId motor;
+    uint8_t run_state;
+    int accel_count;
+    int step_count;
+    int decel_start;
+    int decel_val;
+    int min_arr;
+    int curr_arr;
+    int rest;
+    int total_steps;
+} StepMotorRamp_t;
+
+// 🔥 新增这两行（声明外部变量）
+extern StepMotorRamp_t motor_ramp_A;
+extern StepMotorRamp_t motor_ramp_B;
+
 // 初始化 GPIO（方向、SLEEP）
 void StepMotor_Init(void);
 
@@ -33,5 +58,7 @@ void StepMotor_Turn(StepMotorId motor,
                     float subdivide,    // 细分数（如 1, 2, 4, 8...）
                     uint8_t dir,        // 方向：0 = 顺时针，1 = 逆时针
                     float rpm);         // 转速（单位：RPM）
+
+void StepMotor_ForceStop(StepMotorId motor);
 
 #endif // __STEP_MOTOR_H__

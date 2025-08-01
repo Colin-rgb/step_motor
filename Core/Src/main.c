@@ -38,6 +38,12 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+// 定义 UART 接收缓存（大小可根据实际命令长度扩展）
+#define UART_RX_BUF_LEN 64
+uint8_t uart_rx_ch;           // 每次接收1个字节
+char uart_cmd_buf[UART_RX_BUF_LEN];  // 临时拼接命令
+uint8_t uart_cmd_idx = 0;
+volatile uint8_t uart_cmd_ready = 0;
 
 /* USER CODE END PD */
 
@@ -63,16 +69,34 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   if (htim == &htim2) {
     StepMotor_Stop(STEP_MOTOR_A);
-    StepMotor_SetSleep(STEP_MOTOR_A, GPIO_PIN_RESET);
+    motor_ramp_A.run_state = STOP;
     usart_printf("A 电机停止\r\n");
   }
   if (htim == &htim3) {
     StepMotor_Stop(STEP_MOTOR_B);
-    StepMotor_SetSleep(STEP_MOTOR_B, GPIO_PIN_RESET);
+    motor_ramp_B.run_state = STOP;
     usart_printf("B 电机停止\r\n");
   }
 }
 
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == USART2)
+  {
+    if (uart_rx_ch == '\n')  // 命令结束
+    {
+      uart_cmd_buf[uart_cmd_idx] = '\0';
+      uart_cmd_ready = 1;
+      uart_cmd_idx = 0;
+    }
+    else if (uart_cmd_idx < UART_RX_BUF_LEN - 1)
+    {
+      uart_cmd_buf[uart_cmd_idx++] = uart_rx_ch;
+    }
+
+    HAL_UART_Receive_IT(&huart2, &uart_rx_ch, 1);  // 继续接收
+  }
+}
 
 
 /* USER CODE END PFP */
@@ -122,6 +146,10 @@ int main(void)
   // 初始化按键中断
   // Key_Init();
 
+  HAL_UART_Receive_IT(&huart2, &uart_rx_ch, 1);  // ✅ 接收1字节
+
+
+
   // 初始化方向与休眠引脚
   StepMotor_Init();
   // 使能 A、B 电机（退出 SLEEP）
@@ -146,6 +174,7 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   // 默认状态
+  angle_val = 5;
   while (1)
   {
     GPIO_PinState run_now = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_14);   // 启动按键
@@ -154,7 +183,7 @@ int main(void)
     // PC15 从高变低 → 增加角度
     if (last_angle == GPIO_PIN_SET && angle_now == GPIO_PIN_RESET)
     {
-      angle_val += 90;
+      angle_val += 5;
       if (angle_val >= 360) angle_val = 90; // 超过360回到90
       usart_printf("角度增加，当前角度: %d 度\r\n", angle_val);
     }
@@ -163,13 +192,29 @@ int main(void)
     if (last_run == GPIO_PIN_SET && run_now == GPIO_PIN_RESET)
     {
       usart_printf("执行 A/B 电机旋转 %d 度\r\n", angle_val);
-      StepMotor_Turn(STEP_MOTOR_A, angle_val, 32.0f, dir_val, 13.0f);
-      StepMotor_Turn(STEP_MOTOR_B, angle_val, 32.0f, dir_val, 13.0f);
+      StepMotor_Turn(STEP_MOTOR_A, angle_val, 32.0f, dir_val, 20.0f);
+      StepMotor_Turn(STEP_MOTOR_B, angle_val, 32.0f, dir_val, 20.0f);
     }
 
 
     last_run = run_now;
     last_angle = angle_now;
+
+    if (uart_cmd_ready)
+    {
+      uart_cmd_ready = 0;
+      usart_printf("收到: %s\r\n", uart_cmd_buf);  // ✅ 打印拼接完成的命令
+
+      if (strncmp(uart_cmd_buf, "STOP", 4) == 0) {
+        StepMotor_ForceStop(STEP_MOTOR_A);
+        StepMotor_ForceStop(STEP_MOTOR_B);
+      }
+      else if (strncmp(uart_cmd_buf, "TURN", 4) == 0) {
+        float angle = atof(&uart_cmd_buf[5]);
+        StepMotor_Turn(STEP_MOTOR_A, angle, 32.0f, 1, 20.0f);
+      }
+    }
+
     HAL_Delay(10);  // 简单防抖
     /* USER CODE END WHILE */
 
