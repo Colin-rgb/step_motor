@@ -99,7 +99,13 @@ void StepMotor_Turn(StepMotorId motor, float angle, float subdivide, uint8_t dir
     // 6. 延时以输出 total_steps 个脉冲
     // 一个脉冲周期 = 1/freq 秒，n个脉冲时间 = total_steps / freq 秒
     float duration_ms = (float)total_steps / freq * 1000.0f;
-    HAL_Delay((uint32_t)duration_ms);
+    HAL_Delay((uint32_t)duration_ms + 1);
+
+    if (total_steps < 5 || rpm > 100.0f) {
+        // 步数太小或频率太高 → 忽略这次转动
+        return;
+    }
+
 
     // 7. 停止
     StepMotor_Stop(motor);
