@@ -55,10 +55,6 @@ volatile uint8_t uart_cmd_ready = 0;
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-float angle_val = 90.0;               // 默认角度
-GPIO_PinState last_run = GPIO_PIN_SET;
-GPIO_PinState last_angle = GPIO_PIN_SET;
-uint8_t dir_val = 0;              // 方向（0 顺时针，1 逆时针）
 
 /* USER CODE END PV */
 
@@ -174,44 +170,226 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   // 默认状态
-  // angle_val = 5;
+  float angle_val = 90.0;               // 默认角度
+  float speed_val = 30.0;               // 默认速度RPM
+  GPIO_PinState last_run = GPIO_PIN_SET;
+  GPIO_PinState last_angle = GPIO_PIN_SET;
+  GPIO_PinState last_speed = GPIO_PIN_SET;  // 新增速度切换按键状态
+  uint8_t dir_val = 0;              // 方向（0 顺时针，1 逆时针）
   while (1)
   {
     GPIO_PinState run_now = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_14);   // 启动按键
     GPIO_PinState angle_now = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_15); // 改变角度按键
+    GPIO_PinState speed_now = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13); // 改变速度按键（新增）
 
     // PC15 从高变低 → 增加角度
     if (last_angle == GPIO_PIN_SET && angle_now == GPIO_PIN_RESET)
     {
       angle_val += 90;
       if (angle_val >= 360) angle_val = 90; // 超过360回到90
-      usart_printf("角度增加，当前角度: %d 度\r\n", angle_val);
+      usart_printf("角度增加，当前角度: %.1f 度\r\n", angle_val);
+    }
+
+    // PC13 从高变低 → 切换速度 (新增)
+    if (last_speed == GPIO_PIN_SET && speed_now == GPIO_PIN_RESET)
+    {
+      // 速度循环：30 -> 60 -> 100 -> 30
+      if (speed_val == 30.0f) {
+        speed_val = 60.0f;
+      } else if (speed_val == 60.0f) {
+        speed_val = 100.0f;
+      } else {
+        speed_val = 30.0f;
+      }
+      usart_printf("速度切换，当前速度: %.1f RPM\r\n", speed_val);
     }
 
     // PC14 从高变低 → 同时启动 A 和 B 电机旋转
     if (last_run == GPIO_PIN_SET && run_now == GPIO_PIN_RESET)
     {
-      usart_printf("执行 A/B 电机旋转 %d 度\r\n", angle_val);
-      StepMotor_Turn(STEP_MOTOR_A, angle_val, 32.0f, dir_val, 100.0f);
-      StepMotor_Turn(STEP_MOTOR_B, angle_val, 32.0f, dir_val, 100.0f);
+      usart_printf("执行 A/B 电机旋转 %.1f 度，方向: %s，速度: %.1f RPM\r\n",
+                   angle_val, dir_val ? "逆时针" : "顺时针", speed_val);
+      StepMotor_Turn(STEP_MOTOR_A, angle_val, 32.0f, dir_val, speed_val);
+      StepMotor_Turn(STEP_MOTOR_B, angle_val, 32.0f, dir_val, speed_val);
     }
-
 
     last_run = run_now;
     last_angle = angle_now;
+    last_speed = speed_now;  // 更新速度按键状态
 
     if (uart_cmd_ready)
     {
       uart_cmd_ready = 0;
       usart_printf("收到: %s\r\n", uart_cmd_buf);  // ✅ 打印拼接完成的命令
 
+      // 🔥 解析命令并支持方向控制
       if (strncmp(uart_cmd_buf, "STOP", 4) == 0) {
         StepMotor_ForceStop(STEP_MOTOR_A);
         StepMotor_ForceStop(STEP_MOTOR_B);
+        usart_printf("所有电机已停止\r\n");
       }
+      // TURN <angle> [direction] [speed] - 转动指定角度
+      // 例：TURN 90     （90度，默认顺时针，30RPM）
+      // 例：TURN 180 1  （180度，逆时针，30RPM）
+      // 例：TURN 45 0 60（45度，顺时针，60RPM）
       else if (strncmp(uart_cmd_buf, "TURN", 4) == 0) {
-        float angle = atof(&uart_cmd_buf[5]);
-        StepMotor_Turn(STEP_MOTOR_A, angle, 32.0f, 1, 30.0f);
+        float angle = 90.0f;
+        uint8_t direction = 0;  // 默认顺时针
+        float speed = 30.0f;    // 默认30RPM
+
+        // 解析参数
+        char* token = strtok(uart_cmd_buf + 5, " ");  // 跳过"TURN "
+        if (token != NULL) {
+          angle = atof(token);
+
+          token = strtok(NULL, " ");  // 获取方向参数
+          if (token != NULL) {
+            direction = (uint8_t)atoi(token);
+
+            token = strtok(NULL, " ");  // 获取速度参数
+            if (token != NULL) {
+              speed = atof(token);
+            } else {
+              speed = speed_val;  // 使用默认速度
+            }
+          } else {
+            speed = speed_val;  // 使用默认速度
+          }
+        }
+
+        // 限制参数范围
+        if (angle <= 0) angle = 90.0f;
+        if (angle > 3600) angle = 3600.0f;  // 最大10圈
+        if (direction > 1) direction = 0;
+        if (speed <= 0) speed = speed_val;  // 使用默认速度
+        if (speed > 200) speed = 200.0f;    // 最大200RPM
+
+        usart_printf("执行命令：角度=%.1f° 方向=%s 速度=%.1fRPM\r\n",
+                     angle, direction ? "逆时针" : "顺时针", speed);
+        StepMotor_Turn(STEP_MOTOR_A, angle, 32.0f, direction, speed);
+      }
+      // TURNB <angle> [direction] [speed] - 只转动B电机
+      else if (strncmp(uart_cmd_buf, "TURNB", 5) == 0) {
+        float angle = 90.0f;
+        uint8_t direction = 0;
+        float speed = 30.0f;
+
+        char* token = strtok(uart_cmd_buf + 6, " ");
+        if (token != NULL) {
+          angle = atof(token);
+
+          token = strtok(NULL, " ");
+          if (token != NULL) {
+            direction = (uint8_t)atoi(token);
+
+            token = strtok(NULL, " ");
+            if (token != NULL) {
+              speed = atof(token);
+            } else {
+              speed = speed_val;  // 使用默认速度
+            }
+          } else {
+            speed = speed_val;  // 使用默认速度
+          }
+        }
+
+        if (angle <= 0) angle = 90.0f;
+        if (angle > 3600) angle = 3600.0f;
+        if (direction > 1) direction = 0;
+        if (speed <= 0) speed = speed_val;
+        if (speed > 200) speed = 200.0f;
+
+        usart_printf("B电机：角度=%.1f° 方向=%s 速度=%.1fRPM\r\n",
+                     angle, direction ? "逆时针" : "顺时针", speed);
+        StepMotor_Turn(STEP_MOTOR_B, angle, 32.0f, direction, speed);
+      }
+      // BOTH <angle> [direction] [speed] - 同时转动AB电机
+      else if (strncmp(uart_cmd_buf, "BOTH", 4) == 0) {
+        float angle = 90.0f;
+        uint8_t direction = 0;
+        float speed = 30.0f;
+
+        char* token = strtok(uart_cmd_buf + 5, " ");
+        if (token != NULL) {
+          angle = atof(token);
+
+          token = strtok(NULL, " ");
+          if (token != NULL) {
+            direction = (uint8_t)atoi(token);
+
+            token = strtok(NULL, " ");
+            if (token != NULL) {
+              speed = atof(token);
+            } else {
+              speed = speed_val;  // 使用默认速度
+            }
+          } else {
+            speed = speed_val;  // 使用默认速度
+          }
+        }
+
+        if (angle <= 0) angle = 90.0f;
+        if (angle > 3600) angle = 3600.0f;
+        if (direction > 1) direction = 0;
+        if (speed <= 0) speed = speed_val;
+        if (speed > 200) speed = 200.0f;
+
+        usart_printf("AB电机：角度=%.1f° 方向=%s 速度=%.1fRPM\r\n",
+                     angle, direction ? "逆时针" : "顺时针", speed);
+        StepMotor_Turn(STEP_MOTOR_A, angle, 32.0f, direction, speed);
+        StepMotor_Turn(STEP_MOTOR_B, angle, 32.0f, direction, speed);
+      }
+      // SPEED <rpm> - 设置默认速度
+      else if (strncmp(uart_cmd_buf, "SPEED", 5) == 0) {
+        if (strlen(uart_cmd_buf) > 6) {
+          float new_speed = atof(&uart_cmd_buf[6]);
+          if (new_speed > 0 && new_speed <= 200) {
+            speed_val = new_speed;
+            usart_printf("默认速度已改为：%.1f RPM\r\n", speed_val);
+          } else {
+            usart_printf("速度参数错误，请使用1-200之间的数值\r\n");
+          }
+        } else {
+          usart_printf("当前默认速度：%.1f RPM\r\n", speed_val);
+        }
+      }
+      // STATUS - 显示当前设置状态
+      else if (strncmp(uart_cmd_buf, "STATUS", 6) == 0) {
+        usart_printf("=== 当前设置状态 ===\r\n");
+        usart_printf("默认角度：%.1f 度\r\n", angle_val);
+        usart_printf("默认方向：%s\r\n", dir_val ? "逆时针" : "顺时针");
+        usart_printf("默认速度：%.1f RPM\r\n", speed_val);
+        usart_printf("==================\r\n");
+      }
+      // HELP - 显示帮助信息
+      else if (strncmp(uart_cmd_buf, "HELP", 4) == 0) {
+        usart_printf("=== 电机控制命令 ===\r\n");
+        usart_printf("STOP                    - 停止所有电机\r\n");
+        usart_printf("TURN <角度> [方向] [速度] - A电机转动\r\n");
+        usart_printf("TURNB <角度> [方向] [速度]- B电机转动\r\n");
+        usart_printf("BOTH <角度> [方向] [速度] - AB电机同时转动\r\n");
+        usart_printf("DIR <0/1>               - 设置默认方向\r\n");
+        usart_printf("SPEED <rpm>             - 设置默认速度\r\n");
+        usart_printf("STATUS                  - 显示当前设置\r\n");
+        usart_printf("HELP                    - 显示此帮助\r\n");
+        usart_printf("按键说明：\r\n");
+        usart_printf("  PC15: 切换角度 (90°->180°->270°->90°)\r\n");
+        usart_printf("  PC13: 切换速度 (30->60->100->30 RPM)\r\n");
+        usart_printf("  PC14: 执行运动 (使用当前设置)\r\n");
+        usart_printf("参数说明：\r\n");
+        usart_printf("  角度: 0.1-3600度\r\n");
+        usart_printf("  方向: 0=顺时针, 1=逆时针\r\n");
+        usart_printf("  速度: 1-200 RPM\r\n");
+        usart_printf("示例：\r\n");
+        usart_printf("  TURN 90      (90度顺时针当前速度)\r\n");
+        usart_printf("  TURN 180 1   (180度逆时针当前速度)\r\n");
+        usart_printf("  BOTH 45 0 60 (45度顺时针60RPM)\r\n");
+        usart_printf("  SPEED 80     (设置默认速度为80RPM)\r\n");
+        usart_printf("  STATUS       (查看当前设置)\r\n");
+        usart_printf("================\r\n");
+      }
+      else {
+        usart_printf("未知命令，请输入HELP查看帮助\r\n");
       }
     }
 
