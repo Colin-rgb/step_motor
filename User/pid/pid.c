@@ -76,7 +76,7 @@ void StepMotor_PID_Update(int err_x, int err_y, int valid)
     if (rpm_y > 25.0f) rpm_y = 25.0f;
 
     float angle = 0.12f;
-    // float angle = 30.0f;
+    // float angle = 6.0f;
     float min_angle = 1.8f / 32.0f;
 
     if (angle < min_angle) angle = min_angle;

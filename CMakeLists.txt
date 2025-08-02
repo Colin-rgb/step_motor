@@ -45,7 +45,7 @@ add_executable(${CMAKE_PROJECT_NAME}
         User/step_motor/step_motor.h
         User/usart_redirect/usart_user.c
         User/usart_redirect/usart_user.h
-        Core/Src/delay.c
+#        Core/Src/delay.c
         User/Key/key.c
         User/Key/key.h
         User/pid/pid.c

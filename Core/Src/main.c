@@ -26,7 +26,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "step_motor.h"
-#include "delay.h"
+// #include "delay.h"
 #include "key.h"
 #include "usart_user.h"
 #include "pid.h"
@@ -149,20 +149,22 @@ void MotorControl_Init(void)
 {
   // 初始化 PID 参数（可自行调参）
   // PID_Init(&pid_x, 0.001f, 0.01f, 0.001f, 50.0f);
-  PID_Init(&pid_x, 10.0f, 0.001f, 0.001f, 50.0f);
-  PID_Init(&pid_y, 10.0f, 0.001f, 0.001f, 50.0f);
+  PID_Init(&pid_x, 2.0f, 0.001f, 0.001f, 50.0f);
+  PID_Init(&pid_y, 8.0f, 0.001f, 0.001f, 50.0f);
+  // PID_Init(&pid_x, 2.0f, 0.005f, 0.0f, 50.0f);
+  // PID_Init(&pid_y, 3.0f, 0.001f, 0.0f, 50.0f);
   // PID_Init(&pid_y, 1.0f, 0.01f, 0.001f, 50.0f);
 }
 
 void Laser_On(void)
 {
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_RESET);
 }
 
 // 关闭激光器
 void Laser_Off(void)
 {
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_SET);
 }
 
 
@@ -211,7 +213,7 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-  delay_init();  // 初始化 DWT/SysTick 延时
+  // delay_init();  // 初始化 DWT/SysTick 延时
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -258,11 +260,13 @@ int main(void)
   StepMotor_Start(STEP_MOTOR_A);
   StepMotor_Start(STEP_MOTOR_B);
 
-  delay_ms(10);
+  // delay_ms(10);
+  HAL_Delay(10);
 
-  StepMotor_Turn(STEP_MOTOR_A, 80, 32.0f, 0, 100);
-  Laser_Off();  // 默认关闭激光器
-  // delay_ms(500);
+  StepMotor_Turn(STEP_MOTOR_A, 78, 32.0f, 0, 100);
+  // Laser_Off();  // 默认关闭激光器
+  // HAL_Delay(900);
+  Laser_On();  // 默认关闭激光器
   // StepMotor_Turn(STEP_MOTOR_A, 0, 32.0f, 0, 50);
 
   /* USER CODE END 2 */
@@ -270,24 +274,24 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   // 默认状态
-  u8 open_time = 1;
+  // ✅ 放在这里 —— 保证变量不会被每次 while 重置
+  static uint8_t detect_mode_entered = 0;
+  static float step_angle = 10.0f;
+  static float total_rotated = 0.0f;
   while (1)
   {
     // StepMotor_Turn(STEP_MOTOR_B, 1.8, 32.0f, 0, 1);
-    // usart_printf("hello");
-    loop_uart_check();  // 检查是否有数据
-    if (g_dect_flag && abs(g_err_x) <= 5 && abs(g_err_y) <= 5) {
-      if (open_time) {
-        Laser_On();
-        delay_ms(300);
-        Laser_Off();
-        open_time--;
-      }
-    }
-    // HAL_Delay(100);  // 简单防抖
+    // loop_uart_check();  // 检查是否有数据
+    // if (abs(g_err_x) <= 200 && abs(g_err_y) <= 200) {
+    //   Laser_On();
+
+    // }
+
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+
   }
   /* USER CODE END 3 */
 }
