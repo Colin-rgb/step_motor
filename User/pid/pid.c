@@ -81,7 +81,7 @@ void StepMotor_PID_Update(float err_x, float err_y, int valid)
 
     if (angle < min_angle) angle = min_angle;
 
-    // StepMotor_Turn(STEP_MOTOR_B, angle, 32.0f, dir_x, rpm_x);
+    StepMotor_Turn(STEP_MOTOR_B, angle, 32.0f, dir_x, rpm_x);
     StepMotor_Turn(STEP_MOTOR_A, angle, 32.0f, dir_y, rpm_y);
 }
 
