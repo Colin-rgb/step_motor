@@ -142,8 +142,8 @@ void MotorControl_Init(void)
 {
   // 初始化 PID 参数（可自行调参）
   // PID_Init(&pid_x, 0.001f, 0.01f, 0.001f, 50.0f);
-  PID_Init(&pid_x, 10.0f, 0.001f, 0.001f, 50.0f);
-  PID_Init(&pid_y, 10.0f, 0.001f, 0.001f, 50.0f);
+  PID_Init(&pid_x, 10.0f, 0.0001f, 0.001f, 50.0f);
+  PID_Init(&pid_y, 10.0f, 0.0001f, 0.001f, 50.0f);
   // PID_Init(&pid_y, 1.0f, 0.01f, 0.001f, 50.0f);
 }
 
@@ -230,8 +230,8 @@ int main(void)
   StepMotor_SetSleep(STEP_MOTOR_B, GPIO_PIN_SET);
 
   // 设置方向（GPIO_PIN_RESET = 顺时针）
-  StepMotor_SetDir(STEP_MOTOR_A, GPIO_PIN_RESET);
-  StepMotor_SetDir(STEP_MOTOR_B, GPIO_PIN_RESET);
+  StepMotor_SetDir(STEP_MOTOR_A, GPIO_PIN_SET);
+  StepMotor_SetDir(STEP_MOTOR_B, GPIO_PIN_SET);
 
   // 设置占空比为 50%
   // StepMotor_SetDuty(STEP_MOTOR_A, 50.0f);  // 百分比
@@ -245,7 +245,7 @@ int main(void)
 
   delay_ms(10);
 
-  StepMotor_Turn(STEP_MOTOR_A, 80, 32.0f, 0, 100);
+  StepMotor_Turn(STEP_MOTOR_A, 76, 32.0f, 0, 70);
   // delay_ms(500);
   // StepMotor_Turn(STEP_MOTOR_A, 0, 32.0f, 0, 50);
 
